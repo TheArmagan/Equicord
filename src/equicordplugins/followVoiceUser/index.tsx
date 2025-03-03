@@ -78,6 +78,11 @@ export default definePlugin({
     description: "Follow a friend in voice chat.",
     authors: [EquicordDevs.TheArmagan],
     settings,
+    settingsAboutComponent: () => <>
+        <Forms.FormText className="followvoiceuser-warning">
+            This Plugin is used to follow a Friend/Friends into voice chat(s).
+        </Forms.FormText>
+    </>,
     flux: {
         async VOICE_STATE_UPDATES({ voiceStates }: { voiceStates: VoiceState[]; }) {
             if (!followedUserInfo) return;
