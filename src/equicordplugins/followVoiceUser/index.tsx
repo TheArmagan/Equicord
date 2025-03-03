@@ -78,9 +78,6 @@ export default definePlugin({
     name: "FollowVoiceUser",
     description: "Follow a user in voice chat.",
     authors: [EquicordDevs.TheArmagan],
-    start() {
-        followedUserInfo = null as any;
-    },
     flux: {
         async VOICE_STATE_UPDATES({ voiceStates }: { voiceStates: VoiceState[]; }) {
             if (!followedUserInfo) return;
