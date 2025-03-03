@@ -84,6 +84,7 @@ export default definePlugin({
     flux: {
         async VOICE_STATE_UPDATES({ voiceStates }: { voiceStates: VoiceState[]; }) {
             if (!followedUserInfo) return;
+            if (!RelationshipStore.getFriendIDs().includes(followedUserInfo.userId)) return;
 
             if (
                 settings.store.onlyWhenInVoice
