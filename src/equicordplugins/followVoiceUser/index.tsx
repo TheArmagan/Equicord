@@ -13,6 +13,24 @@ import { Menu, React } from "@webpack/common";
 import { VoiceState } from "@webpack/types";
 import { Channel, User } from "discord-types/general";
 
+type TFollowedUserInfo = {
+    lastChannelId: string;
+    userId: string;
+} | null;
+
+interface UserContextProps {
+    channel: Channel;
+    user: User;
+    guildId?: string;
+}
+
+let followedUserInfo: TFollowedUserInfo = null;
+
+const voiceChannelAction = findByPropsLazy("selectVoiceChannel");
+const VoiceStateStore = findStoreLazy("VoiceStateStore");
+const UserStore = findStoreLazy("UserStore");
+const RelationshipStore = findStoreLazy("RelationshipStore");
+
 const settings = definePluginSettings({
     onlyWhenInVoice: {
         type: OptionType.BOOLEAN,
@@ -25,25 +43,6 @@ const settings = definePluginSettings({
         description: "Leave the voice channel when the user leaves. (That can cause you to sometimes enter infinite leave/join loop)"
     }
 });
-
-type TFollowedUserInfo = {
-    lastChannelId: string;
-    userId: string;
-};
-
-let followedUserInfo: TFollowedUserInfo | null;
-
-const voiceChannelAction = findByPropsLazy("selectVoiceChannel");
-const VoiceStateStore = findStoreLazy("VoiceStateStore");
-const UserStore = findStoreLazy("UserStore");
-const RelationshipStore = findStoreLazy("RelationshipStore");
-
-
-interface UserContextProps {
-    channel: Channel;
-    user: User;
-    guildId?: string;
-}
 
 const UserContextMenuPatch: NavContextMenuPatchCallback = (children, { channel, user }: UserContextProps) => {
     if (UserStore.getCurrentUser().id === user.id || !RelationshipStore.getFriendIDs().includes(user.id)) return;
@@ -78,9 +77,7 @@ export default definePlugin({
     name: "FollowVoiceUser",
     description: "Follow a friend in voice chat.",
     authors: [EquicordDevs.TheArmagan],
-    start() {
-        followedUserInfo = null as any;
-    },
+    settings,
     flux: {
         async VOICE_STATE_UPDATES({ voiceStates }: { voiceStates: VoiceState[]; }) {
             if (!followedUserInfo) return;
@@ -111,6 +108,5 @@ export default definePlugin({
     },
     contextMenus: {
         "user-context": UserContextMenuPatch
-    },
-    settings
+    }
 });
