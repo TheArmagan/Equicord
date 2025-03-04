@@ -4,13 +4,38 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+import { NavContextMenuPatchCallback } from "@api/ContextMenu";
 import { EquicordDevs } from "@utils/constants";
 import definePlugin from "@utils/types";
-import { FluxDispatcher, UserStore } from "@webpack/common";
+import { FluxDispatcher, Menu, React, UserStore } from "@webpack/common";
+import { Channel } from "discord-types/general";
 
 const ignoredChannelIds = new Set<string>();
 
-// TODO: Implement context menus for toggle and DataStore for persistence
+const ContextMenuPatch: NavContextMenuPatchCallback = (children, { channel }: { channel: Channel; }) => {
+    if (!channel || (!channel.isDM() && !channel.isGroupDM())) return;
+
+    const [checked, setChecked] = React.useState(ignoredChannelIds.has(channel.id));
+
+    children.push(
+        <Menu.MenuSeparator />,
+        <Menu.MenuCheckboxItem
+            id="ic-ignore-calls"
+            label="Ignore Calls"
+            checked={checked}
+            action={() => {
+                if (checked)
+                    ignoredChannelIds.delete(channel.id);
+                else
+                    ignoredChannelIds.add(channel.id);
+
+
+                setChecked(!checked);
+            }}
+        ></Menu.MenuCheckboxItem>
+    );
+};
+
 
 export default definePlugin({
     name: "IgnoreCalls",
@@ -27,9 +52,13 @@ export default definePlugin({
                     channelId,
                     ringing: ringing.filter((id: string) => id !== currentUserId),
                     messageId,
-                    region,
+                    region
                 });
             }
         }
+    },
+    contextMenus: {
+        "user-context": ContextMenuPatch,
+        "gdm-context": ContextMenuPatch,
     }
 });
