@@ -42,9 +42,9 @@ const settings = definePluginSettings({
     ignoreTimeout: {
         type: OptionType.SLIDER,
         description: "Timeout to click ignore",
-        markers: [0, 1000, 2500, 5000, 10000, 20000],
+        markers: [0, 1000, 2000, 2500, 5000, 10000],
         default: 2500,
-        stickToMarkers: true,
+        stickToMarkers: false,
     }
 });
 
@@ -57,8 +57,8 @@ export default definePlugin({
         {
             find: "#{intl::INCOMING_CALL_ELLIPSIS}",
             replacement: {
-                match: /(?<=channel:(\i).{0,50}INCOMING_CALL_MODAL\).*?)(\}\)\]\}\))\]/,
-                replace: "$2,$self.renderIgnore($1)]"
+                match: /(?<=channel:(\i).{0,50}INCOMING_CALL_MODAL\).*?\}\)\]\}\))\]/,
+                replace: ",$self.renderIgnore($1)]"
             }
         }
     ],
