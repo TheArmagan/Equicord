@@ -24,6 +24,49 @@ import {
     UserStore,
 } from "@webpack/common";
 
+// Create an in-memory cache (temporary, lost on restart)
+const ttsCache = new Map<string, string>();
+
+// Helper function to open (or create) an IndexedDB database.
+function openDB(): Promise<IDBDatabase> {
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open("VcNarratorDB", 1);
+        request.onupgradeneeded = () => {
+            const db = request.result;
+            // Create an object store called "voices" if it doesn't already exist.
+            if (!db.objectStoreNames.contains("voices")) {
+                db.createObjectStore("voices");
+            }
+        };
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+}
+
+// Function to get a cached voice line from IndexedDB.
+async function getCachedVoiceFromDB(cacheKey: string): Promise<Blob | null> {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction("voices", "readonly");
+        const store = tx.objectStore("voices");
+        const request = store.get(cacheKey);
+        request.onsuccess = () => resolve(request.result || null);
+        request.onerror = () => reject(request.error);
+    });
+}
+
+// Function to store a voice line in IndexedDB.
+async function setCachedVoiceInDB(cacheKey: string, blob: Blob): Promise<void> {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction("voices", "readwrite");
+        const store = tx.objectStore("voices");
+        const request = store.put(blob, cacheKey);
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+    });
+}
+
 interface VoiceState {
     userId: string;
     channelId?: string;
@@ -43,10 +86,41 @@ const VoiceStateStore = findByPropsLazy(
 // Filtering out events is not as simple as just dropping duplicates, as otherwise mute, unmute, mute would
 // not say the second mute, which would lead you to believe they're unmuted
 
-async function speak(
-    text: string,
-) {
+async function speak(text: string, { volume, rate, customVoice } = settings.store) {
     if (text.trim().length === 0) return;
+
+    // Create a unique cache key using the voice setting and the text.
+    const cacheKey = `${customVoice}_${text}`;
+
+    // 1. Check the in-memory cache (fast check)
+    if (ttsCache.has(cacheKey)) {
+        const cachedUrl = ttsCache.get(cacheKey)!;
+        const audio = new Audio(cachedUrl);
+        audio.volume = volume;
+        audio.playbackRate = rate;
+        audio.play();
+        return;
+    }
+
+    // 2. Check the persistent IndexedDB cache.
+    try {
+        const cachedBlob = await getCachedVoiceFromDB(cacheKey);
+        if (cachedBlob) {
+            // Create a URL from the stored Blob.
+            const url = URL.createObjectURL(cachedBlob);
+            // Save it in the in-memory cache for next time.
+            ttsCache.set(cacheKey, url);
+            const audio = new Audio(url);
+            audio.volume = volume;
+            audio.playbackRate = rate;
+            audio.play();
+            return;
+        }
+    } catch (err) {
+        console.error("Error accessing IndexedDB:", err);
+    }
+
+    // 3. If not found in either cache, fetch from the TTS API.
     const response = await fetch(
         "https://tiktok-tts.weilnet.workers.dev/api/generation",
         {
@@ -60,7 +134,7 @@ async function speak(
             referrerPolicy: "no-referrer",
             body: JSON.stringify({
                 text: text,
-                voice: settings.store.customVoice,
+                voice: customVoice,
             }),
         }
     );
@@ -76,9 +150,19 @@ async function speak(
     const blob = new Blob([new Uint8Array(binaryData)], { type: "audio/mpeg" });
     const url = URL.createObjectURL(blob);
 
+    // Save the URL in the in-memory cache.
+    ttsCache.set(cacheKey, url);
+
+    // Store the Blob in IndexedDB for persistence.
+    try {
+        await setCachedVoiceInDB(cacheKey, blob);
+    } catch (err) {
+        console.error("Error storing in IndexedDB:", err);
+    }
+
     const audio = new Audio(url);
-    audio.volume = settings.store.volume;
-    audio.playbackRate = settings.store.rate;
+    audio.volume = volume;
+    audio.playbackRate = rate;
     audio.play();
 }
 
@@ -136,23 +220,20 @@ function getTypeAndChannelId(
 }
 
 function playSample(tempSettings: any, type: string) {
-    const settingsobj = Object.assign(
-        {},
-        settings.store,
-        tempSettings
-    );
+    const s = Object.assign({}, settings.plain, tempSettings);
     const currentUser = UserStore.getCurrentUser();
     const myGuildId = SelectedGuildStore.getGuildId();
 
     speak(
         formatText(
-            settingsobj[type + "Message"],
+            s[type + "Message"],
             currentUser.username,
             "general",
             (currentUser as any).globalName ?? currentUser.username,
             GuildMemberStore.getNick(myGuildId, currentUser.id) ??
             currentUser.username
-        )
+        ),
+        s
     );
 }
 
@@ -298,7 +379,7 @@ export default definePlugin({
     settingsAboutComponent({ tempSettings: s }) {
         const types = useMemo(
             () =>
-                Object.keys(settings.store!)
+                Object.keys(settings.def)
                     .filter(k => k.endsWith("Message"))
                     .map(k => k.slice(0, -7)),
             []
